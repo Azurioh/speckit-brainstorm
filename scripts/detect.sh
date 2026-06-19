@@ -12,6 +12,16 @@ cd "$PROJECT_DIR"
 
 jbool() { if [ "$1" = true ]; then printf 'true'; else printf 'false'; fi; }
 
+# json_str — escape a value for safe inclusion inside a JSON string.
+json_str() {
+  local s=$1
+  s=${s//\\/\\\\}     # backslashes first
+  s=${s//\"/\\\"}     # then double quotes
+  s=${s//$'\n'/ }     # collapse newlines
+  s=${s//$'\r'/}      # drop carriage returns
+  printf '%s' "$s"
+}
+
 uv_present=false;      have uv && uv_present=true
 specify_present=false; have specify && specify_present=true
 
@@ -54,14 +64,14 @@ fi
 
 printf '{'
 printf '"uv":%s,'                "$(jbool $uv_present)"
-printf '"python":"%s",'          "$python_version"
+printf '"python":"%s",'          "$(json_str "$python_version")"
 printf '"specify_cli":%s,'       "$(jbool $specify_present)"
 printf '"speckit_installed":%s,' "$(jbool $speckit_installed)"
-printf '"version":"%s",'         "$installed_version"
-printf '"latest":"%s",'          "$latest"
+printf '"version":"%s",'         "$(json_str "$installed_version")"
+printf '"latest":"%s",'          "$(json_str "$latest")"
 printf '"has_constitution":%s,'  "$(jbool $has_constitution)"
 printf '"cmd_prefix":"%s",'      "$cmd_prefix"
-printf '"feature":"%s",'         "$feature"
+printf '"feature":"%s",'         "$(json_str "$feature")"
 printf '"feature_count":%s,'     "${feature_count:-0}"
 printf '"has_spec":%s,'          "$(jbool $has_spec)"
 printf '"has_plan":%s,'          "$(jbool $has_plan)"

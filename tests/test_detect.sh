@@ -41,4 +41,18 @@ OUT="$(CLAUDE_PROJECT_DIR="$tmp" SPECKIT_BRAINSTORM_OFFLINE=1 bash "$SCRIPT")"
 check "plain: cmd_prefix empty"   '"cmd_prefix":""'
 rm -rf "$tmp"
 
+# Fixture D: a feature dir name containing a double quote must not break JSON
+tmp="$(mktemp -d)"
+mkdir -p "$tmp/.specify" "$tmp/specs/00\"x"
+echo '{}' > "$tmp/.specify/feature.json"
+OUT="$(CLAUDE_PROJECT_DIR="$tmp" SPECKIT_BRAINSTORM_OFFLINE=1 bash "$SCRIPT")"
+if printf '%s' "$OUT" | python3 -c 'import json,sys; json.loads(sys.stdin.read())' 2>/dev/null; then
+  echo "ok: valid JSON when feature name has a quote"
+else
+  echo "FAIL: invalid JSON when feature name has a quote"; echo "  got: $OUT"; fail=1
+fi
+got_feature="$(printf '%s' "$OUT" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["feature"])')"
+if [ "$got_feature" = '00"x' ]; then echo "ok: feature round-trips with quote"; else echo "FAIL: feature='$got_feature'"; fail=1; fi
+rm -rf "$tmp"
+
 exit $fail
