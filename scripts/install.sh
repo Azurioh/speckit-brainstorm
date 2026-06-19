@@ -7,13 +7,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 . "$SCRIPT_DIR/lib.sh"
 
+die() { echo "ERROR: $*" >&2; exit 1; }
+
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
+[ -d "$PROJECT_DIR" ] || die "project directory '$PROJECT_DIR' does not exist."
 cd "$PROJECT_DIR"
 
 GIT_SRC="git+https://github.com/github/spec-kit.git"
 FALLBACK_TAG="v0.11.2"
-
-die() { echo "ERROR: $*" >&2; exit 1; }
 
 # 1. uv
 have uv || die "uv not found. Install it first: curl -LsSf https://astral.sh/uv/install.sh | sh"

@@ -22,10 +22,10 @@ if PATH="$bin:/usr/bin:/bin" CLAUDE_PROJECT_DIR="$proj" bash "$SCRIPT" >/dev/nul
   echo "ok: happy path exits 0"
 else echo "FAIL: happy path should exit 0"; fail=1; fi
 # shellcheck disable=SC2015  # &&...|| is intentional assertion pattern in tests
-grep -q 'uv tool install --force specify-cli --from git+https://github.com/github/spec-kit.git@v0.11.2' "$SHIM_LOG" \
+grep -qF 'uv tool install --force specify-cli --from git+https://github.com/github/spec-kit.git@v0.11.2' "$SHIM_LOG" \
   && echo "ok: uv install args" || { echo "FAIL: uv install args"; cat "$SHIM_LOG"; fail=1; }
 # shellcheck disable=SC2015
-grep -q 'specify init . --force --integration claude --script sh' "$SHIM_LOG" \
+grep -qF 'specify init . --force --integration claude --script sh' "$SHIM_LOG" \
   && echo "ok: specify init args" || { echo "FAIL: specify init args"; fail=1; }
 rm -rf "$bin" "$proj"
 
@@ -36,9 +36,11 @@ make_shim "$bin" uv      'exit 0'
 make_shim "$bin" python3 'echo "Python 3.11.5"'
 # shellcheck disable=SC2016  # single-quoted body is intentional: $1 must expand inside the shim, not here
 make_shim "$bin" specify 'if [ "$1" = version ]; then echo "specify 0.11.2"; fi; exit 0'
-PATH="$bin:/usr/bin:/bin" CLAUDE_PROJECT_DIR="$proj" SPECKIT_BRAINSTORM_OFFLINE=1 bash "$SCRIPT" >/dev/null 2>&1
+if PATH="$bin:/usr/bin:/bin" CLAUDE_PROJECT_DIR="$proj" SPECKIT_BRAINSTORM_OFFLINE=1 bash "$SCRIPT" >/dev/null 2>&1; then
+  echo "ok: offline exits 0"
+else echo "FAIL: offline should exit 0"; fail=1; fi
 # shellcheck disable=SC2015
-grep -q 'specify-cli --from git+https://github.com/github/spec-kit.git@v0.11.2' "$SHIM_LOG" \
+grep -qF 'specify-cli --from git+https://github.com/github/spec-kit.git@v0.11.2' "$SHIM_LOG" \
   && echo "ok: offline uses fallback tag" || { echo "FAIL: fallback tag"; cat "$SHIM_LOG"; fail=1; }
 rm -rf "$bin" "$proj"
 
@@ -58,5 +60,16 @@ if PATH="$bin:/usr/bin:/bin" CLAUDE_PROJECT_DIR="$proj" bash "$SCRIPT" >/dev/nul
   echo "FAIL: should reject python < 3.11"; fail=1
 else echo "ok: rejects old python"; fi
 rm -rf "$bin" "$proj"
+
+# --- Bad CLAUDE_PROJECT_DIR: exit non-zero with ERROR ---
+bin="$(mktemp -d)"; export SHIM_LOG="$bin/calls.log"; : > "$SHIM_LOG"
+make_shim "$bin" uv      'exit 0'
+make_shim "$bin" python3 'echo "Python 3.11.5"'
+if PATH="$bin:/usr/bin:/bin" CLAUDE_PROJECT_DIR="/no/such/dir/xyz123" bash "$SCRIPT" >/dev/null 2>&1; then
+  echo "FAIL: bad project dir should exit non-zero"; fail=1
+else echo "ok: rejects bad project dir"; fi
+err="$(PATH="$bin:/usr/bin:/bin" CLAUDE_PROJECT_DIR="/no/such/dir/xyz123" bash "$SCRIPT" 2>&1 >/dev/null || true)"
+case "$err" in ERROR:*) echo "ok: bad project dir emits ERROR" ;; *) echo "FAIL: no ERROR for bad dir (got: $err)"; fail=1 ;; esac
+rm -rf "$bin"
 
 exit $fail
