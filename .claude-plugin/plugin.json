@@ -1,0 +1,10 @@
+{
+  "name": "speckit-brainstorm",
+  "displayName": "Speckit Brainstorm",
+  "description": "Conversational guide for the full GitHub Spec Kit workflow — challenge your idea, then run each speckit step at the right moment behind a preview-and-confirm gate. Installs speckit (latest release) if missing.",
+  "version": "0.1.0",
+  "author": { "name": "Azurioh" },
+  "repository": "https://github.com/Azurioh/speckit-brainstorm",
+  "license": "MIT",
+  "keywords": ["speckit", "spec-driven-development", "brainstorming", "workflow"]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "speckit-brainstorm",
+  "owner": { "name": "Azurioh" },
+  "plugins": [
+    {
+      "name": "speckit-brainstorm",
+      "source": ".",
+      "description": "Conversational guide for the full GitHub Spec Kit workflow."
+    }
+  ]
+}
