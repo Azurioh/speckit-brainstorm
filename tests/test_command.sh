@@ -14,6 +14,9 @@ need "one question at a time"       'one question at a time'
 need "inline-follow mechanism"      'cmd_prefix'
 need "intake challenge section"     'Intake challenge'
 need "not a stub"                   'speckit-brainstorm guide'
+need "taskstoissues step"           'taskstoissues'
+need "issue quality rules block"    'Issue quality rules'
+need "acceptance criteria rule"     'acceptance criteria'
 
 # stub marker must be gone
 if grep -q 'full orchestrator prompt added in Task 5' "$CMD"; then echo "FAIL: still a stub"; fail=1; else echo "ok: stub replaced"; fi

@@ -185,3 +185,25 @@ Consent is gathered at the command layer (via the preview gate); the script assu
 - `specify init` current-directory flag (`.` vs `--here`) and the precise `--integration claude` syntax.
 - Availability/permission model of the `SlashCommand` tool in target environments.
 - Confirm the namespaced command names (`/speckit.*`) against the installed speckit version.
+
+## 12. Addendum (2026-06-19) — GitHub tracking-issues step
+
+A new closing step turns the generated tasks into GitHub issues using speckit's **native**
+`/speckit.taskstoissues` command (confirmed present in spec-kit v0.11.3: "Convert generated task
+lists into GitHub issues"; it skips tasks that already have an issue).
+
+- **Mechanism:** same inline-follow + preview-and-confirm gate as every other phase — no new
+  tool, no duplication. Because `taskstoissues` is itself an agent prompt, the command passes a
+  reusable **Issue quality rules** block as guidance so the created issues honor them.
+- **Placement:** offered once `has_tasks` is true (before implementing, if the user wants to
+  track work first) and again as the closing proposal after `implement`.
+- **Source/granularity:** issues are **grouped** from `tasks.md` into coherent work items — not
+  one issue per micro-task.
+- **Issue quality rules (enforced):** (1) group, don't enumerate; (2) meaningful outcome-oriented
+  title, never "Task N"/"Issue N"; (3) relevant description (what + why, scope, spec/plan refs);
+  (4) explicit acceptance criteria (verifiable "done" checklist).
+- **Prerequisite/edge case:** needs a GitHub repo + remote + `gh` (or speckit's GitHub
+  integration); if absent, the command says so and skips rather than fabricating issues.
+- **No script/contract change:** `detect.sh` is unchanged (`taskstoissues` self-skips existing
+  issues, so no new state field is required). Only the command prompt and its structural test
+  changed.

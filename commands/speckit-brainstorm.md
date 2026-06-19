@@ -74,7 +74,7 @@ Re-run `detect.sh` if you just installed. Resolve a phase's command file as
 | no active `feature`, or user wants a new one | Run **Intake challenge**, then the `specify` phase. |
 | spec exists, no plan | Review the spec with the user, surface gaps; offer the `clarify` phase if ambiguous, then the `plan` phase. |
 | plan exists, no tasks | Run the `tasks` phase; then offer the `analyze` phase for cross-artifact consistency. |
-| tasks exist | Confirm readiness, then run the `implement` phase (explicit gate before large execution). |
+| tasks exist | Confirm readiness, then run the `implement` phase (explicit gate before large execution). Once tasks exist you may also offer **Step 3 — tracking issues** (before implementing if the user wants to track the work, or after). |
 | `feature_count` > 1 and ambiguous | Show a short menu of the directories under `specs/` and ask which feature to work on. |
 
 ## Intake challenge (the heart of this command)
@@ -103,8 +103,37 @@ There is no programmatic slash-command tool. To run phase `<phase>` with message
 4. When it finishes, summarize what it produced in plain language, flag gaps/risks, and
    confirm before advancing to the next phase.
 
+## Step 3 — Offer GitHub tracking issues (taskstoissues)
+
+Once `tasks` exist (offer this after `implement`, or earlier if the user wants to track the work
+before building), propose turning the tasks into GitHub issues using speckit's native
+`taskstoissues` phase (`/speckit.taskstoissues`).
+
+- **Prerequisite:** a GitHub repository with a remote and the `gh` CLI (or speckit's GitHub
+  integration). If it's missing, say so plainly and skip — never fabricate issues.
+- **Curate, then create.** Read `tasks.md`, group the tasks into coherent work items per the
+  **Issue quality rules** below, and show the proposed issue set (title + description +
+  acceptance criteria for each) inside the preview-and-confirm block. Only on confirm, run the
+  `taskstoissues` phase via the inline-follow mechanism (Step "Running a phase"), passing the
+  Issue quality rules as the message/guidance so the created issues follow them.
+- **After creation:** list the issues that were created (numbers/URLs); note any tasks skipped
+  because they already had an issue.
+
+### Issue quality rules
+
+Every issue MUST follow these — pass them as guidance whenever creating issues:
+
+1. **Group, don't enumerate.** Combine related tasks into one coherent issue per work item.
+   Never create one issue per micro-task.
+2. **Meaningful title.** Outcome- or value-oriented (e.g. "Email + password authentication"),
+   describing what the work achieves — NEVER an enumeration like "Task 1", "Issue 2", or "Step 3".
+3. **Relevant description.** Context (what and why), the scope of the work, and references to the
+   relevant parts of the spec/plan.
+4. **Explicit acceptance criteria.** A checklist of verifiable conditions that define "done" for
+   the issue.
+
 ## After implement
 
 When the `implement` phase is done: summarize what was built, suggest running the project's
-tests/verification, and remind the user they can re-run `/speckit-brainstorm` anytime to
-continue or start a new feature.
+tests/verification, offer **Step 3 — GitHub tracking issues** if not already done, and remind
+the user they can re-run `/speckit-brainstorm` anytime to continue or start a new feature.
