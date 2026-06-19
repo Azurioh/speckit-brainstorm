@@ -4,15 +4,16 @@
 
 **Goal:** Ship a Claude Code plugin whose single `/speckit-brainstorm` command conversationally guides a user through the entire GitHub Spec Kit pipeline, installing speckit (latest release) if missing.
 
-**Architecture:** A thin orchestrator. Deterministic logic (state detection, install) lives in two bash scripts; the user-facing intelligence lives in one command-prompt markdown file. The command detects project state, challenges the idea like a brainstorming partner, then drives each native `/speckit.*` phase by reading and following its installed command file inline (there is no programmatic slash-command tool), always behind a preview-and-confirm gate. The repo is simultaneously the plugin and its marketplace.
+**Architecture:** A thin orchestrator. Deterministic logic (state detection, install) lives in bash scripts sharing one helper library; the user-facing intelligence lives in one command-prompt markdown file. The command detects project state, challenges the idea like a brainstorming partner, then drives each native `/speckit.*` phase by reading and following its installed command file inline (there is no programmatic slash-command tool), always behind a preview-and-confirm gate. The repo is simultaneously the plugin and its marketplace.
 
 **Tech Stack:** Bash (coreutils + curl; `jq` optional with grep fallback), Claude Code plugin manifests (JSON), GitHub Spec Kit (`specify` CLI via `uv`), `shellcheck` for linting.
 
 ## Global Constraints
 
-- Bash scripts start with `#!/usr/bin/env bash` and `set -euo pipefail` (tests may relax with `set -uo pipefail`); must pass `shellcheck` with zero warnings.
+- Bash scripts start with `#!/usr/bin/env bash` and `set -euo pipefail` (the sourced `lib.sh` and test scripts are the exceptions — see their tasks); all must pass `shellcheck` with zero warnings.
 - No hard dependency beyond coreutils + `curl`. `jq` is optional — every JSON read has a `grep`/`sed` fallback. Network is best-effort; honor `SPECKIT_BRAINSTORM_OFFLINE=1` to skip all network calls.
-- Bundled scripts are located at runtime via `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.sh`. Project root is `${CLAUDE_PROJECT_DIR:-$PWD}`.
+- Shared helpers (`have`, `resolve_latest_tag`) live in `scripts/lib.sh` and are sourced by `detect.sh` and `install.sh` — never duplicated inline.
+- Bundled scripts are located at runtime via `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.sh`. Each script resolves its own directory (`${BASH_SOURCE[0]}`) to source `lib.sh`, independent of CWD. Project root is `${CLAUDE_PROJECT_DIR:-$PWD}`.
 - speckit install is **pinned to the latest GitHub release tag** (`https://api.github.com/repos/github/spec-kit/releases/latest` → `.tag_name`); fallback tag when offline/rate-limited: `v0.11.2`.
 - speckit agent flag is exactly `--integration claude`. Current-dir init is `specify init . --force --integration claude --script sh`.
 - Plugin command name is `/speckit-brainstorm` (file `commands/speckit-brainstorm.md`). `plugin.json` requires `name`; `marketplace.json` requires `name`, `owner`, `plugins[]` (entry `source: "."`).
@@ -26,7 +27,7 @@
 **Files:**
 - Create: `.claude-plugin/plugin.json`
 - Create: `.claude-plugin/marketplace.json`
-- Create: `commands/speckit-brainstorm.md` (minimal stub; full prompt lands in Task 4)
+- Create: `commands/speckit-brainstorm.md` (minimal stub; full prompt lands in Task 5)
 - Create: `tests/test_manifests.sh`
 
 **Interfaces:**
@@ -95,7 +96,7 @@ Expected: FAIL lines for missing files (manifests/command not created yet).
 }
 ```
 
-`commands/speckit-brainstorm.md` (stub, replaced in Task 4):
+`commands/speckit-brainstorm.md` (stub, replaced in Task 5):
 ```markdown
 ---
 description: Conversational guide for the full GitHub Spec Kit workflow. Installs speckit (latest release) if missing.
@@ -103,7 +104,7 @@ argument-hint: "[optional: a short description of your idea]"
 allowed-tools: Bash, Read, Glob, Grep, AskUserQuestion
 ---
 
-(stub — full orchestrator prompt added in Task 4)
+(stub — full orchestrator prompt added in Task 5)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -127,14 +128,114 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 2: `detect.sh` — read-only state probe
+### Task 2: `scripts/lib.sh` — shared helpers
+
+**Files:**
+- Create: `scripts/lib.sh`
+- Create: `tests/test_lib.sh`
+
+**Interfaces:**
+- Produces: `scripts/lib.sh`, a sourced library (no side effects on source, not meant to be executed). Functions:
+  - `have CMD` → exit 0 if `CMD` is on `PATH`, else non-zero.
+  - `resolve_latest_tag` → prints the latest spec-kit release tag (e.g. `v0.11.2`) to stdout, or prints nothing if it cannot be resolved. Honors `SPECKIT_BRAINSTORM_OFFLINE=1` (skips network, prints nothing). Best-effort: never returns non-zero to the caller.
+- Consumed by Tasks 3 (`detect.sh`) and 4 (`install.sh`).
+
+- [ ] **Step 1: Write the failing test**
+
+`tests/test_lib.sh`:
+```bash
+#!/usr/bin/env bash
+set -uo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=scripts/lib.sh
+. "$ROOT/scripts/lib.sh"
+fail=0
+chk() { if [ "$2" = "$3" ]; then echo "ok: $1"; else echo "FAIL: $1 (want '$3' got '$2')"; fail=1; fi; }
+
+# have()
+if have sh; then echo "ok: have finds sh"; else echo "FAIL: have sh"; fail=1; fi
+if have __no_such_cmd_xyz__; then echo "FAIL: have false-positive"; fail=1; else echo "ok: have rejects missing"; fi
+
+# resolve_latest_tag offline -> empty
+out="$(SPECKIT_BRAINSTORM_OFFLINE=1 resolve_latest_tag)"
+chk "offline tag empty" "$out" ""
+
+# resolve_latest_tag with a curl shim returning JSON -> parses tag
+bin="$(mktemp -d)"
+printf '#!/usr/bin/env bash\necho "{\\"tag_name\\":\\"v9.9.9\\"}"\n' > "$bin/curl"
+chmod +x "$bin/curl"
+out="$(PATH="$bin:$PATH" resolve_latest_tag)"
+chk "tag parsed from API" "$out" "v9.9.9"
+rm -rf "$bin"
+
+exit $fail
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `bash tests/test_lib.sh`
+Expected: FAIL — `. "$ROOT/scripts/lib.sh"` errors because the file does not exist (test aborts / functions undefined).
+
+- [ ] **Step 3: Implement `scripts/lib.sh`**
+
+```bash
+#!/usr/bin/env bash
+# lib.sh — shared helpers for the speckit-brainstorm bundled scripts.
+# Source this file (do not execute it). Provides: have(), resolve_latest_tag().
+
+# have CMD — succeed if CMD is on PATH.
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# resolve_latest_tag — print the latest spec-kit release tag (e.g. "v0.11.2"),
+# or print nothing if it cannot be resolved. Honors SPECKIT_BRAINSTORM_OFFLINE=1.
+# Best-effort: never fails the caller.
+resolve_latest_tag() {
+  local api="https://api.github.com/repos/github/spec-kit/releases/latest"
+  local resp tag=""
+  if [ "${SPECKIT_BRAINSTORM_OFFLINE:-0}" = 1 ] || ! have curl; then
+    return 0
+  fi
+  resp="$(curl -fsSL --max-time 5 "$api" 2>/dev/null || true)"
+  [ -n "$resp" ] || return 0
+  if have jq; then
+    tag="$(printf '%s' "$resp" | jq -r '.tag_name // empty')"
+  else
+    tag="$(printf '%s' "$resp" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')"
+  fi
+  printf '%s' "$tag"
+}
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `bash tests/test_lib.sh`
+Expected: all `ok:` lines, exit 0.
+
+- [ ] **Step 5: Lint**
+
+Run: `shellcheck scripts/lib.sh tests/test_lib.sh`
+Expected: no output (clean).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add scripts/lib.sh tests/test_lib.sh
+git commit -m "feat: add shared script helpers (have, resolve_latest_tag)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task 3: `detect.sh` — read-only state probe
 
 **Files:**
 - Create: `scripts/detect.sh`
 - Create: `tests/test_detect.sh`
 
 **Interfaces:**
-- Produces: `scripts/detect.sh` prints a single-line JSON object to stdout with exactly these keys: `uv` (bool), `python` (string like `"3.11"` or `""`), `specify_cli` (bool), `speckit_installed` (bool), `version` (string), `latest` (string), `has_constitution` (bool), `cmd_prefix` (string, `"speckit."` or `""`), `feature` (string), `feature_count` (number), `has_spec` (bool), `has_plan` (bool), `has_tasks` (bool). Honors `CLAUDE_PROJECT_DIR` and `SPECKIT_BRAINSTORM_OFFLINE`. The command prompt (Task 4) consumes this contract.
+- Consumes: `scripts/lib.sh` (`have`, `resolve_latest_tag`) from Task 2, sourced via the script's own directory.
+- Produces: `scripts/detect.sh` prints a single-line JSON object to stdout with exactly these keys: `uv` (bool), `python` (string like `"3.11"` or `""`), `specify_cli` (bool), `speckit_installed` (bool), `version` (string), `latest` (string), `has_constitution` (bool), `cmd_prefix` (string, `"speckit."` or `""`), `feature` (string), `feature_count` (number), `has_spec` (bool), `has_plan` (bool), `has_tasks` (bool). Honors `CLAUDE_PROJECT_DIR` and `SPECKIT_BRAINSTORM_OFFLINE`. The command prompt (Task 5) consumes this contract.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -199,13 +300,16 @@ Expected: FAIL (script does not exist → `grep` finds nothing, every check fail
 # Emits one JSON object on stdout. No side effects.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+. "$SCRIPT_DIR/lib.sh"
+
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 cd "$PROJECT_DIR"
 
-have() { command -v "$1" >/dev/null 2>&1; }
 jbool() { if [ "$1" = true ]; then printf 'true'; else printf 'false'; fi; }
 
-uv_present=false;     have uv && uv_present=true
+uv_present=false;      have uv && uv_present=true
 specify_present=false; have specify && specify_present=true
 
 python_version=""
@@ -221,17 +325,7 @@ if $specify_present; then
   installed_version="$(specify version 2>/dev/null | grep -oiE 'v?[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
 fi
 
-latest=""
-if [ "${SPECKIT_BRAINSTORM_OFFLINE:-0}" != 1 ] && have curl; then
-  resp="$(curl -fsSL --max-time 5 https://api.github.com/repos/github/spec-kit/releases/latest 2>/dev/null || true)"
-  if [ -n "$resp" ]; then
-    if have jq; then
-      latest="$(printf '%s' "$resp" | jq -r '.tag_name // empty')"
-    else
-      latest="$(printf '%s' "$resp" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')"
-    fi
-  fi
-fi
+latest="$(resolve_latest_tag)"
 
 has_constitution=false
 [ -s .specify/memory/constitution.md ] && has_constitution=true
@@ -292,15 +386,15 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 3: `install.sh` — install latest speckit + init project
+### Task 4: `install.sh` — install latest speckit + init project
 
 **Files:**
 - Create: `scripts/install.sh`
 - Create: `tests/test_install.sh`
 
 **Interfaces:**
-- Consumes: nothing from prior tasks (consent is handled by the command layer).
-- Produces: `scripts/install.sh` that, given `uv`/`python3` present, resolves the latest spec-kit tag, runs `uv tool install --force specify-cli --from git+https://github.com/github/spec-kit.git@<tag>`, then `specify init . --force --integration claude --script sh`, then verifies `.specify/` exists. Exits non-zero with a clear `ERROR:` message when a prerequisite is missing. Honors `CLAUDE_PROJECT_DIR` and `SPECKIT_BRAINSTORM_OFFLINE`.
+- Consumes: `scripts/lib.sh` (`have`, `resolve_latest_tag`) from Task 2; consent is handled by the command layer.
+- Produces: `scripts/install.sh` that, given `uv`/`python3` present, resolves the latest spec-kit tag (fallback `v0.11.2`), runs `uv tool install --force specify-cli --from git+https://github.com/github/spec-kit.git@<tag>`, then `specify init . --force --integration claude --script sh`, then verifies `.specify/` exists. Exits non-zero with a clear `ERROR:` message when a prerequisite is missing. Honors `CLAUDE_PROJECT_DIR` and `SPECKIT_BRAINSTORM_OFFLINE`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -377,15 +471,17 @@ Expected: FAIL (script missing → all checks fail / non-zero).
 # current project for Claude Code. Consent is handled by the calling command.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib.sh
+. "$SCRIPT_DIR/lib.sh"
+
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$PWD}"
 cd "$PROJECT_DIR"
 
 GIT_SRC="git+https://github.com/github/spec-kit.git"
-API="https://api.github.com/repos/github/spec-kit/releases/latest"
 FALLBACK_TAG="v0.11.2"
 
-have() { command -v "$1" >/dev/null 2>&1; }
-die()  { echo "ERROR: $*" >&2; exit 1; }
+die() { echo "ERROR: $*" >&2; exit 1; }
 
 # 1. uv
 have uv || die "uv not found. Install it first: curl -LsSf https://astral.sh/uv/install.sh | sh"
@@ -398,18 +494,8 @@ if [ "${pymajor:-0}" -lt 3 ] || { [ "${pymajor:-0}" -eq 3 ] && [ "${pyminor:-0}"
   die "Python >= 3.11 required (found ${pyver:-unknown})."
 fi
 
-# 3. resolve latest release tag (best effort)
-tag=""
-if [ "${SPECKIT_BRAINSTORM_OFFLINE:-0}" != 1 ] && have curl; then
-  resp="$(curl -fsSL --max-time 5 "$API" 2>/dev/null || true)"
-  if [ -n "$resp" ]; then
-    if have jq; then
-      tag="$(printf '%s' "$resp" | jq -r '.tag_name // empty')"
-    else
-      tag="$(printf '%s' "$resp" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')"
-    fi
-  fi
-fi
+# 3. resolve latest release tag (best effort; fallback when unavailable)
+tag="$(resolve_latest_tag)"
 [ -n "$tag" ] || tag="$FALLBACK_TAG"
 echo "Installing GitHub Spec Kit ${tag} ..."
 
@@ -447,14 +533,14 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 4: Orchestrator command prompt
+### Task 5: Orchestrator command prompt
 
 **Files:**
 - Modify: `commands/speckit-brainstorm.md` (replace the Task 1 stub with the full prompt)
 - Create: `tests/test_command.sh`
 
 **Interfaces:**
-- Consumes: the `detect.sh` JSON contract (Task 2) and `install.sh` behavior (Task 3), both located via `${CLAUDE_PLUGIN_ROOT}/scripts/`.
+- Consumes: the `detect.sh` JSON contract (Task 3) and `install.sh` behavior (Task 4), both located via `${CLAUDE_PLUGIN_ROOT}/scripts/`.
 - Produces: the user-facing command. No later task depends on its internals.
 
 - [ ] **Step 1: Write the failing test**
@@ -479,7 +565,7 @@ need "intake challenge section"     'Intake challenge'
 need "not a stub"                   'speckit-brainstorm guide'
 
 # stub marker must be gone
-if grep -q 'full orchestrator prompt added in Task 4' "$CMD"; then echo "FAIL: still a stub"; fail=1; else echo "ok: stub replaced"; fi
+if grep -q 'full orchestrator prompt added in Task 5' "$CMD"; then echo "FAIL: still a stub"; fail=1; else echo "ok: stub replaced"; fi
 exit $fail
 ```
 
@@ -621,7 +707,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 5: README + test runner + end-to-end verification
+### Task 6: README + test runner + end-to-end verification
 
 **Files:**
 - Create: `tests/run.sh` (runs all `tests/test_*.sh` + shellcheck)
@@ -732,11 +818,11 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Self-Review (completed during planning)
 
-- **Spec coverage:** §1 purpose → Task 4 prompt; §3 approach (thin orchestrator, inline-follow) → Task 4; §4 layout → Tasks 1–5; §5 flow/§6 gate → Task 4; §7 detect → Task 2; §8 install → Task 3; §9 edge cases → handled across detect.sh (partial/offline/multi-feature/cmd_prefix), install.sh (uv/python/api-down), and the prompt (not-a-repo confirm, edited-message re-show, menu); §10 testing → Tasks 1–5 tests + `tests/run.sh`. No gaps.
+- **Spec coverage:** §1 purpose → Task 5 prompt; §3 approach (thin orchestrator, inline-follow) → Task 5; §4 layout → Tasks 1–6; §5 flow/§6 gate → Task 5; §7 detect → Task 3; §8 install → Task 4; §9 edge cases → handled across detect.sh (partial/offline/multi-feature/cmd_prefix), install.sh (uv/python/api-down), and the prompt (not-a-repo confirm, edited-message re-show, menu); §10 testing → Tasks 1–6 tests + `tests/run.sh`. Shared tag-resolution logic is centralized in `lib.sh` (Task 2) — no duplication. No gaps.
 - **Placeholder scan:** none — all scripts, tests, manifests, and the command prompt are given in full.
-- **Type/contract consistency:** the `detect.sh` JSON keys defined in Task 2 are the exact keys referenced by Task 4's prompt and `tests/test_detect.sh`; install argument strings asserted in Task 3's test match `install.sh` verbatim.
+- **Type/contract consistency:** the `detect.sh` JSON keys defined in Task 3 are the exact keys referenced by Task 5's prompt and `tests/test_detect.sh`; `resolve_latest_tag`/`have` signatures in Task 2 match their use in Tasks 3–4; install argument strings asserted in Task 4's test match `install.sh` verbatim.
 
 ## Build-time confirmations (low-risk, verify while implementing)
 
 - `marketplace.json` `source: "."` for a repo that is its own single plugin — if Claude Code rejects it, move plugin files under a `plugin/` subdir and set `source: "./plugin"` (Task 1 + the manifest test still apply).
-- `${CLAUDE_PLUGIN_ROOT}` substitution inside a command markdown body — if it is not expanded there, fall back to resolving scripts relative to the project or document the absolute cache path. Verified during Task 5 step 4.
+- `${CLAUDE_PLUGIN_ROOT}` substitution inside a command markdown body — if it is not expanded there, fall back to resolving scripts relative to the project or document the absolute cache path. Verified during Task 6 step 4.
