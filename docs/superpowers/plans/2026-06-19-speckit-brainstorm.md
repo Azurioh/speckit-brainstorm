@@ -213,8 +213,8 @@ Expected: all `ok:` lines, exit 0.
 
 - [ ] **Step 5: Lint**
 
-Run: `shellcheck scripts/lib.sh tests/test_lib.sh`
-Expected: no output (clean).
+Run: `shellcheck -x scripts/lib.sh tests/test_lib.sh`
+Expected: no output (clean). `-x` is required so the test's `# shellcheck source=scripts/lib.sh` directive is followed.
 
 - [ ] **Step 6: Commit**
 
@@ -372,8 +372,8 @@ Expected: all `ok:` lines, exit 0.
 
 - [ ] **Step 5: Lint**
 
-Run: `shellcheck scripts/detect.sh tests/test_detect.sh`
-Expected: no output (clean).
+Run: `shellcheck -x scripts/detect.sh tests/test_detect.sh`
+Expected: no output (clean). `-x` is required to follow the `# shellcheck source=` directive. The `ls -1dt` line carries an inline `# shellcheck disable=SC2012` (its `find`-based alternative needs GNU-only `-printf`).
 
 - [ ] **Step 6: Commit**
 
@@ -519,8 +519,8 @@ Expected: all `ok:` lines, exit 0.
 
 - [ ] **Step 5: Lint**
 
-Run: `shellcheck scripts/install.sh tests/test_install.sh`
-Expected: no output (clean).
+Run: `shellcheck -x scripts/install.sh tests/test_install.sh`
+Expected: no output (clean). The `-x` flag is required so shellcheck follows the `# shellcheck source=scripts/lib.sh` directive (without it, SC1091 info is emitted and shellcheck exits non-zero).
 
 - [ ] **Step 6: Commit**
 
@@ -726,7 +726,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 fail=0
 
 echo "== shellcheck =="
-shellcheck "$ROOT"/scripts/*.sh "$ROOT"/tests/*.sh || fail=1
+shellcheck -x "$ROOT"/scripts/*.sh "$ROOT"/tests/*.sh || fail=1
 
 for t in "$ROOT"/tests/test_*.sh; do
   echo "== $(basename "$t") =="
