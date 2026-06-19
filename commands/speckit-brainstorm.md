@@ -35,6 +35,9 @@ Run the bundled probe and parse its single-line JSON:
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/detect.sh"
 ```
+
+If that command fails because the path did not resolve (e.g. the output shows a literal `${CLAUDE_PLUGIN_ROOT}` or "No such file or directory"), STOP and tell the user the plugin's bundled scripts could not be located — do not improvise a path or skip detection.
+
 Fields: `uv, python, specify_cli, speckit_installed, version, latest, has_constitution,
 cmd_prefix, feature, feature_count, has_spec, has_plan, has_tasks`.
 

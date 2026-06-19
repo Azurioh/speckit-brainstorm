@@ -22,4 +22,13 @@ out="$(PATH="$bin:$PATH" resolve_latest_tag)"
 chk "tag parsed from API" "$out" "v9.9.9"
 rm -rf "$bin"
 
+# resolve_latest_tag falls back to grep/sed when jq is absent
+bin="$(mktemp -d)"
+printf '#!/bin/sh\necho "{\\"tag_name\\":\\"v8.8.8\\"}"\n' > "$bin/curl"
+chmod +x "$bin/curl"
+for t in grep sed head; do p="$(command -pv "$t" 2>/dev/null || true)"; [ -n "$p" ] && ln -sf "$p" "$bin/$t"; done
+out="$(PATH="$bin" resolve_latest_tag)"
+chk "grep fallback parses tag when jq absent" "$out" "v8.8.8"
+rm -rf "$bin"
+
 exit $fail
