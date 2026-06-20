@@ -66,11 +66,16 @@ cmd_prefix, feature, feature_count, has_spec, has_plan, has_tasks`.
 
 Re-run `detect.sh` if you just installed. Resolve a phase's command file as
 `.claude/commands/<cmd_prefix><phase>.md` (e.g. `.claude/commands/speckit.specify.md` when
-`cmd_prefix` is `"speckit."`). Then route:
+`cmd_prefix` is `"speckit."`). Then route.
+
+**Apply the first matching row, top to bottom.** On a brand-new project the constitution row
+and the `specify` row both match — always handle the constitution row FIRST: offer it, and
+only after the user accepts it or explicitly skips do you move on to the intake challenge and
+`specify`. Never jump straight to `specify` while `has_constitution` is false.
 
 | State | Action |
 |---|---|
-| `has_constitution` false, fresh project | Offer (don't force) the `constitution` phase to set project principles. Skippable. |
+| `has_constitution` false (always check this before `specify`) | Offer (don't force) the `constitution` phase to set project principles. Wait for the user to accept or explicitly skip before advancing. |
 | no active `feature`, or user wants a new one | Run **Intake challenge**, then the `specify` phase. |
 | spec exists, no plan | Review the spec with the user, surface gaps; offer the `clarify` phase if ambiguous, then the `plan` phase. |
 | plan exists, no tasks | Run the `tasks` phase; then offer the `analyze` phase for cross-artifact consistency. |
