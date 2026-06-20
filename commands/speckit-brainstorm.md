@@ -23,8 +23,10 @@ speckit step at the right time.
       Reply: ok to run · edit the message · skip
    ```
    If the user edits the message, re-show the block before running.
-2. **One question at a time.** When challenging or clarifying, ask a single question per
-   message; prefer multiple-choice (use the AskUserQuestion tool).
+2. **One question at a time.** Ask a single question per message. Use open questions when
+   challenging the premise or the core problem (multiple-choice leads the user toward your
+   options); reserve AskUserQuestion multiple-choice for routing, scope splits, and concrete
+   either/or picks.
 3. **Never claim success you didn't verify.** After install or any phase, check the real
    files/output before saying it worked; relay errors verbatim.
 4. **Match the user's language** (answer in whatever language they write in).
@@ -77,15 +79,35 @@ only after the user accepts it or explicitly skips do you move on to the intake 
 |---|---|
 | `has_constitution` false (always check this before `specify`) | Offer (don't force) the `constitution` phase to set project principles. Wait for the user to accept or explicitly skip before advancing. |
 | no active `feature`, or user wants a new one | Run **Intake challenge**, then the `specify` phase. |
-| spec exists, no plan | Review the spec with the user, surface gaps; offer the `clarify` phase if ambiguous, then the `plan` phase. |
+| spec exists, no plan | Review the spec with the user, surface gaps; run the **Plan challenge** below; offer the `clarify` phase if ambiguous, then the `plan` phase. |
 | plan exists, no tasks | Run the `tasks` phase; then offer the `analyze` phase for cross-artifact consistency. |
 | tasks exist | Confirm readiness, then run the `implement` phase (explicit gate before large execution). Once tasks exist you may also offer **Step 3 — tracking issues** (before implementing if the user wants to track the work, or after). |
 | `feature_count` > 1 and ambiguous | Show a short menu of the directories under `specs/` and ask which feature to work on. |
 
+## Plan challenge (before the `plan` phase)
+
+One pass, not an interrogation:
+1. What's the single riskiest assumption in this spec — the one that, if wrong, sinks the feature?
+2. Is there a materially simpler approach that still hits the same success criteria?
+
+Give your own read on both. If a simpler path exists, name it and let the user choose.
+
 ## Intake challenge (the heart of this command)
 
-Before running `specify`, extract the REAL need. If `$ARGUMENTS` is non-empty, use it as the
-starting idea. Ask one question at a time — only what's still unknown:
+Two gates before `specify`: **premise test** (should this exist?) then **shape** (what exactly?).
+Ask one question at a time — only what's still unknown. If `$ARGUMENTS` is non-empty, use it as
+the starting idea.
+
+**Gate A — premise test. Do this FIRST, before extracting any brief.**
+Don't help build the wrong thing. Probe until the premise survives or the user knowingly overrides:
+1. Evidence the problem is real — who hit it, when, how often? (Actual signal, not "users would want".)
+2. Cheapest test that would prove or kill this before a full spec?
+3. Pre-mortem — it's 3 months out and this failed; what was the most likely cause?
+
+If answers are hand-wavy, say so and push back at least once. If the user overrides ("build it
+anyway"), note it and continue — you challenge, they decide.
+
+**Gate B — shape the feature.**
 1. The problem behind the request — who hurts, and how, today?
 2. Who are the users, and what are the top jobs-to-be-done?
 3. Hard constraints (tech, time, integrations, compliance)?
@@ -93,9 +115,20 @@ starting idea. Ask one question at a time — only what's still unknown:
 5. Explicit non-goals / out of scope?
 6. Scope check — one feature or several? If several, help split and tackle the first.
 
-Challenge vague or weak answers; reflect back what you heard. When you have enough, distill a
-tight feature brief (problem · users · requirements · success criteria · non-goals) and use
-that text as the message for the `specify` phase.
+**Challenge weak answers — required, not optional.** An answer is weak if it: restates the
+solution as the problem; gives success with no number or observable event; leaves non-goals empty;
+or names the users as "everyone". On any weak answer, reflect it back and push once before
+accepting. Examples:
+- "Success = users like it" → "How do we *see* that? Name a number or an event we can check."
+- "It's for everyone" → "Who feels the pain first and worst? Start there."
+- Problem = "we need a dashboard" → "That's a solution. What can't they do today without it?"
+
+**Exit bar — do NOT advance to `specify` until ALL are true:** the problem is stated
+independently of the solution · success criteria are measurable · non-goals are non-empty · scope
+is a single feature. If the bar isn't met, you don't "have enough" yet — keep going.
+
+When the bar is met, distill a tight feature brief (problem · users · requirements · success
+criteria · non-goals) and use that text as the message for the `specify` phase.
 
 ## Running a phase (inline-follow mechanism)
 
